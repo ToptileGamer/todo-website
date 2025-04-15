@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>To-Do App with Attachments & Reminders</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f4f4f4;
+      color: #333;
+      margin: 0;
+      padding: 0;
+    }
+    .container {
+      max-width: 700px;
+      margin: 50px auto;
+      background: #ffffff;
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
+    }
+    h2 {
+      color: #222;
+    }
+    input, select, button {
+      width: 100%;
+      padding: 10px;
+      margin: 8px 0;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+    }
+    input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+    }
+    button {
+      background-color: #007bff;
+      color: white;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #0056b3;
+    }
+    .task {
+      padding: 12px;
+      border-bottom: 1px solid #eee;
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+    }
+    .task.done {
+      text-decoration: line-through;
+      color: #888;
+    }
+    .task-info {
+      display: flex;
+      flex-direction: column;
+      flex-grow: 1;
+    }
+    .priority-high { color: #d32f2f; font-weight: bold; }
+    .priority-medium { color: #f9a825; font-weight: bold; }
+    .priority-low { color: #388e3c; font-weight: bold; }
+    .task-line { margin: 2px 0; }
+    .delete-btn {
+      background-color: #dc3545;
+      border: none;
+      color: white;
+      padding: 5px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      height: fit-content;
+      width: min-content;
+    }
+    .delete-btn:hover { background-color: #b02a37; }
+    .filters {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin: 10px 0 20px;
+    }
+    label {
+      font-weight: bold;
+      display: block;
+      margin-top: 10px;
+    }
+    .popup {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: #333;
+      color: #fff;
+      padding: 15px;
+      border-radius: 8px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.2);
+      z-index: 1000;
+    }
+    .attachments a {
+      display: block;
+      font-size: 0.9em;
+      margin: 2px 0;
+      text-decoration: underline;
+      color: #007bff;
+    }
+  </style>
+</head>
+<body>
+  <div class="container" id="login-container">
+    <h2>Login</h2>
+    <label for="username">Username</label>
+    <input type="text" id="username" placeholder="Enter your username" />
+    <button onclick="login()">Login</button>
+  </div>
+
+  <div class="container" id="todo-container" style="display:none">
+    <h2 id="welcome"></h2>
+    <label for="task">Task</label>
+    <input type="text" id="task" placeholder="Enter your task" />
+    <label for="dueDate">Due Date</label>
+    <input type="date" id="dueDate" />
+    <label for="priority">Priority</label>
+    <select id="priority">
+      <option value="High">High</option>
+      <option value="Medium">Medium</option>
+      <option value="Low">Low</option>
+    </select>
+    <label for="attachments">Attach Files (Max 25MB each)</label>
+    <input type="file" id="attachments" multiple />
+    <button onclick="addTask()">Add Task</button>
+
+    <div class="filters">
+      <select id="filter-priority" onchange="loadTasks()">
+        <option value="all">All Priorities</option>
+        <option value="High">High</option>
+        <option value="Medium">Medium</option>
+        <option value="Low">Low</option>
+      </select>
+      <select id="filter-status" onchange="loadTasks()">
+        <option value="all">All Tasks</option>
+        <option value="complete">Completed</option>
+        <option value="incomplete">Incomplete</option>
+      </select>
+    </div>
+
+    <div id="taskList"></div>
+  </div>
+
+  <div id="popup" class="popup" style="display:none"></div>
+
+  <script>
+    let currentUser = null;
+
+    function login() {
+      const user = document.getElementById('username').value.trim();
+      if (!user) return alert('Please enter a username.');
+
+      currentUser = user;
+      document.getElementById('login-container').style.display = 'none';
+      document.getElementById('todo-container').style.display = 'block';
+      document.getElementById('welcome').innerText = `Welcome, ${currentUser}!`;
+
+      loadTasks();
+      startReminderChecker();
+    }
+
+    function addTask() {
+      const task = document.getElementById('task').value.trim();
+      const dueDate = document.getElementById('dueDate').value;
+      const priority = document.getElementById('priority').value;
+      const files = document.getElementById('attachments').files;
+
+      if (!task || !dueDate) return alert('Please fill out all fields.');
+
+      const attachments = [];
+      for (let file of files) {
+        if (file.size > 25 * 1024 * 1024) return alert(`File "${file.name}" exceeds 25MB.`);
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          const taskObj = { task, dueDate, priority, done: false, attachments: [] };
+          const tasks = JSON.parse(localStorage.getItem(currentUser) || '[]');
+          const currentTask = tasks.find(t => t.task === task && t.dueDate === dueDate);
+
+          if (!currentTask) {
+            taskObj.attachments.push({ name: file.name, data: e.target.result });
+            tasks.push(taskObj);
+          } else {
+            currentTask.attachments.push({ name: file.name, data: e.target.result });
+          }
+
+          localStorage.setItem(currentUser, JSON.stringify(tasks));
+          document.getElementById('task').value = '';
+          document.getElementById('attachments').value = '';
+          loadTasks();
+        };
+        reader.readAsDataURL(file);
+      }
+      if (!files.length) {
+        const taskObj = { task, dueDate, priority, done: false, attachments: [] };
+        const tasks = JSON.parse(localStorage.getItem(currentUser) || '[]');
+        tasks.push(taskObj);
+        localStorage.setItem(currentUser, JSON.stringify(tasks));
+        document.getElementById('task').value = '';
+        loadTasks();
+      }
+    }
+
+    function toggleDone(index) {
+      const tasks = JSON.parse(localStorage.getItem(currentUser));
+      tasks[index].done = !tasks[index].done;
+      localStorage.setItem(currentUser, JSON.stringify(tasks));
+      loadTasks();
+    }
+
+    function deleteTask(index) {
+      const tasks = JSON.parse(localStorage.getItem(currentUser));
+      tasks.splice(index, 1);
+      localStorage.setItem(currentUser, JSON.stringify(tasks));
+      loadTasks();
+    }
+
+    function loadTasks() {
+      const tasks = JSON.parse(localStorage.getItem(currentUser) || '[]');
+      const filterPriority = document.getElementById('filter-priority').value;
+      const filterStatus = document.getElementById('filter-status').value;
+      const taskList = document.getElementById('taskList');
+      taskList.innerHTML = '';
+
+      tasks.forEach((t, i) => {
+        if ((filterPriority !== 'all' && t.priority !== filterPriority) ||
+            (filterStatus === 'complete' && !t.done) ||
+            (filterStatus === 'incomplete' && t.done)) {
+          return;
+        }
+
+        const taskEl = document.createElement('div');
+        taskEl.className = 'task' + (t.done ? ' done' : '');
+
+        const attachmentLinks = t.attachments?.map(att => `<a href="${att.data}" download="${att.name}" target="_blank">${att.name}</a>`).join('') || '';
+
+        taskEl.innerHTML = `
+          <input type="checkbox" ${t.done ? 'checked' : ''} onclick="toggleDone(${i})" />
+          <div class="task-info">
+            <div class="task-line priority-${t.priority.toLowerCase()}">Priority: ${t.priority}</div>
+            <div class="task-line">Task: ${t.task}</div>
+            <div class="task-line">Due: ${t.dueDate}</div>
+            <div class="attachments">${attachmentLinks}</div>
+          </div>
+          <button class="delete-btn" onclick="deleteTask(${i})">Delete</button>
+        `;
+        taskList.appendChild(taskEl);
+      });
+    }
+
+    function showPopup(message) {
+      const popup = document.getElementById('popup');
+      popup.innerText = message;
+      popup.style.display = 'block';
+      setTimeout(() => popup.style.display = 'none', 5000);
+    }
+
+    function startReminderChecker() {
+      setInterval(() => {
+        const tasks = JSON.parse(localStorage.getItem(currentUser) || '[]');
+        const today = new Date().toISOString().split('T')[0];
+        tasks.forEach(t => {
+          if (!t.done && (t.dueDate <= today)) {
+            showPopup(`Reminder: "${t.task}" is due!`);
+          }
+        });
+      }, 1000 * 60 * 60 * 6); // Every 6 hours
+    }
+  </script>
+</body>
+</html>
+
